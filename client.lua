@@ -215,72 +215,129 @@ function CraftMenu(id, name, coords, objectid, offset, entity)
     end, id)
 end
 
+local cachedWorkshops = {}
+
+local function getNormalizedJobAndGang()
+    local currentJob = pr_lib.framework and pr_lib.framework.GetPlayerJob and pr_lib.framework.GetPlayerJob()
+    local currentGang = pr_lib.framework and pr_lib.framework.GetPlayerGang and pr_lib.framework.GetPlayerGang()
+
+    local jobName = type(currentJob) == "table" and (currentJob.name or currentJob.id) or tostring(currentJob or "")
+    local gangName = type(currentGang) == "table" and (currentGang.name or currentGang.id) or tostring(currentGang or "")
+
+    return jobName, gangName
+end
+
+local function hasPermissionForBench(jobsList, jobenb)
+    if not jobenb or not jobsList or #jobsList == 0 then
+        return true
+    end
+
+    local jobName, gangName = getNormalizedJobAndGang()
+    for _, item in ipairs(jobsList) do
+        local required = type(item) == "table" and (item.value or item.name) or tostring(item)
+        if required == jobName or required == gangName then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function RefreshBlips(data)
+    if data then
+        cachedWorkshops = data
+    end
+
+    for i = 1, #Blips do
+        if DoesBlipExist(Blips[i]) then
+            RemoveBlip(Blips[i])
+        end
+    end
+    Blips = {}
+
+    for _, v in pairs(cachedWorkshops or {}) do
+        if v.blipenb and v.blipdata and v.coords then
+            if hasPermissionForBench(v.jobs, v.jobenb) then
+                BlipCreation(v.blipdata, v.coords)
+            end
+        end
+    end
+end
+
+local function CleanupWorldEntities()
+    for i = 1, #objects do
+        local entity = objects[i]
+        if DoesEntityExist(entity) then
+            if pr_lib.target and pr_lib.target.removeLocalEntity then
+                pr_lib.target.removeLocalEntity(entity)
+            end
+            SetEntityAsMissionEntity(entity, false, true)
+            DeleteObject(entity)
+        end
+    end
+    objects = {}
+end
+
 local function CreateTables()
     pr_lib.callback.trigger('forge-crafting:fetchTables', function(data)
         if not data then return end
+        cachedWorkshops = data
+        RefreshBlips(data)
 
-        local playerJob = pr_lib.framework and pr_lib.framework.GetPlayerJob and pr_lib.framework.GetPlayerJob()
-        local playerGang = pr_lib.framework and pr_lib.framework.GetPlayerGang and pr_lib.framework.GetPlayerGang()
+        local streaming = pr_lib.fivem and pr_lib.fivem.streaming
 
         for k, v in pairs(data) do
-            if v.blipenb then
-                if v.jobenb then
-                    local loop = v.jobs or {}
-                    for _, item in ipairs(loop) do
-                        if item == playerJob or item == playerGang then
-                            BlipCreation(v.blipdata, v.coords)
-                            break
-                        end
-                    end
-                else
-                    BlipCreation(v.blipdata, v.coords)
-                end
-            end
-
             local modelHash = type(v.model) == "string" and joaat(v.model) or v.model
-            RequestModel(modelHash)
-            while not HasModelLoaded(modelHash) do
-                Wait(10)
+            local loaded = false
+
+            if streaming and streaming.requestModel then
+                loaded, modelHash = streaming.requestModel(modelHash, 3000)
+            else
+                RequestModel(modelHash)
+                local timeout = GetGameTimer() + 3000
+                while not HasModelLoaded(modelHash) and GetGameTimer() < timeout do
+                    Wait(10)
+                end
+                loaded = HasModelLoaded(modelHash)
             end
 
-            local propobj = CreateObject(modelHash, v.coords.x, v.coords.y, v.coords.z, false, true, false)
-            SetEntityHeading(propobj, v.coords.w)
-            FreezeEntityPosition(propobj, true)
-            SetEntityInvincible(propobj, true)
-            SetModelAsNoLongerNeeded(modelHash)
-            PlaceObjectOnGroundProperly(propobj)
-            objects[#objects + 1] = propobj
+            if loaded and v.coords then
+                local propobj = CreateObjectNoOffset(modelHash, v.coords.x, v.coords.y, v.coords.z, false, true, false)
 
-            local targetOptions = {
-                {
-                    name = 'table_' .. v.id,
-                    label = string.format('%s %s', locales.enter_craftable, v.name),
-                    icon = "fa-solid fa-hammer",
-                    distance = 3.0,
-                    canInteract = function()
-                        if isBusy then return false end
-                        if v.jobenb then
-                            local loop = v.jobs or {}
-                            for _, item in ipairs(loop) do
-                                local currentJob = pr_lib.framework and pr_lib.framework.GetPlayerJob and pr_lib.framework.GetPlayerJob()
-                                local currentGang = pr_lib.framework and pr_lib.framework.GetPlayerGang and pr_lib.framework.GetPlayerGang()
-                                if item == currentJob or item == currentGang then
-                                    return true
-                                end
-                            end
-                            return false
-                        end
-                        return true
-                    end,
-                    onSelect = function(entityData)
-                        PlaySoundFrontend(-1, "Place_Prop_Success", "DLC_Dmod_Prop_Editor_Sounds", 1)
-                        CraftMenu(v.id, v.name, v.coords, k, v.offset, propobj)
-                    end,
-                }
-            }
+                if streaming and streaming.releaseModel then
+                    streaming.releaseModel(modelHash)
+                else
+                    SetModelAsNoLongerNeeded(modelHash)
+                end
 
-            if pr_lib.target and pr_lib.target.addLocalEntity then
-                pr_lib.target.addLocalEntity(propobj, targetOptions)
+                if DoesEntityExist(propobj) then
+                    SetEntityHeading(propobj, v.coords.w or 0.0)
+                    FreezeEntityPosition(propobj, true)
+                    SetEntityInvincible(propobj, true)
+                    SetEntityAsMissionEntity(propobj, true, true)
+                    objects[#objects + 1] = propobj
+
+                    local targetOptions = {
+                        {
+                            name = 'table_' .. v.id,
+                            label = string.format('%s %s', locales.enter_craftable, v.name),
+                            icon = "fa-solid fa-hammer",
+                            distance = 2.5,
+                            canInteract = function()
+                                if isBusy then return false end
+                                return hasPermissionForBench(v.jobs, v.jobenb)
+                            end,
+                            onSelect = function(entityData)
+                                PlaySoundFrontend(-1, "Place_Prop_Success", "DLC_Dmod_Prop_Editor_Sounds", 1)
+                                CraftMenu(v.id, v.name, v.coords, k, v.offset, propobj)
+                            end,
+                        }
+                    }
+
+                    if pr_lib.target and pr_lib.target.addLocalEntity then
+                        pr_lib.target.addLocalEntity(propobj, targetOptions)
+                    end
+                end
             end
         end
     end)
@@ -292,40 +349,35 @@ AddEventHandler('onClientResourceStart', function(resourceName)
     CreateTables()
 end)
 
+RegisterNetEvent('QBCore:Client:OnJobUpdate', function()
+    Wait(500)
+    RefreshBlips()
+end)
+
+RegisterNetEvent('QBCore:Client:OnGangUpdate', function()
+    Wait(500)
+    RefreshBlips()
+end)
+
+RegisterNetEvent('esx:setJob', function()
+    Wait(500)
+    RefreshBlips()
+end)
+
 RegisterNetEvent("forge-crafting:Sync", function()
-    for i = 1, #objects do
-        if DoesEntityExist(objects[i]) then
-            if pr_lib.target and pr_lib.target.removeLocalEntity then
-                pr_lib.target.removeLocalEntity(objects[i])
-            end
-            DeleteObject(objects[i])
-        end
-    end
-    objects = {}
-
-    for i = 1, #Blips do
-        RemoveBlip(Blips[i])
-    end
-    Blips = {}
-
+    CleanupWorldEntities()
+    RefreshBlips({})
     CreateTables()
 end)
 
 AddEventHandler("onResourceStop", function(res)
     if GetCurrentResourceName() ~= res then return end
-
-    for i = 1, #objects do
-        if DoesEntityExist(objects[i]) then
-            if pr_lib.target and pr_lib.target.removeLocalEntity then
-                pr_lib.target.removeLocalEntity(objects[i])
-            end
-            DeleteObject(objects[i])
-        end
-    end
-    objects = {}
+    CleanupWorldEntities()
 
     for i = 1, #Blips do
-        RemoveBlip(Blips[i])
+        if DoesBlipExist(Blips[i]) then
+            RemoveBlip(Blips[i])
+        end
     end
     Blips = {}
 

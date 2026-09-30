@@ -437,67 +437,107 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
     end)
 end)
 
+local function placeBenchWithGizmo(modelName, initialCoords, initialHeading, title, cb)
+    local gizmoApi = (pr_lib.fivem and pr_lib.fivem.gizmo) or pr_lib.gizmo
+    if not gizmoApi or not gizmoApi.await then
+        notify(locales.main_title or "Crafting", "Modulo de Gizmo 3D do pr_bridge indisponivel.", "error")
+        if cb then cb(nil, nil, false) end
+        return
+    end
+
+    local modelHash = type(modelName) == "string" and joaat(modelName) or modelName
+    local loaded = false
+    local streaming = pr_lib.fivem and pr_lib.fivem.streaming
+    if streaming and streaming.requestModel then
+        loaded, modelHash = streaming.requestModel(modelHash, 3000)
+    else
+        RequestModel(modelHash)
+        local timeout = GetGameTimer() + 3000
+        while not HasModelLoaded(modelHash) and GetGameTimer() < timeout do
+            Wait(10)
+        end
+        loaded = HasModelLoaded(modelHash)
+    end
+
+    if not loaded then
+        notify(locales.main_title or "Crafting", "Falha ao carregar modelo do prop para o gizmo.", "error")
+        if cb then cb(nil, nil, false) end
+        return
+    end
+
+    local ped = PlayerPedId()
+    local spawnCoords
+    if initialCoords and (initialCoords.x or initialCoords[1]) then
+        spawnCoords = vector3(initialCoords.x or initialCoords[1], initialCoords.y or initialCoords[2], initialCoords.z or initialCoords[3])
+    else
+        spawnCoords = GetOffsetFromEntityInWorldCoords(ped, 0.0, 2.0, 0.0)
+    end
+
+    local spawnHeading = initialHeading or GetEntityHeading(ped)
+    local obj = CreateObjectNoOffset(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, false, true, false)
+    if streaming and streaming.releaseModel then
+        streaming.releaseModel(modelHash)
+    else
+        SetModelAsNoLongerNeeded(modelHash)
+    end
+
+    if not obj or obj == 0 or not DoesEntityExist(obj) then
+        notify(locales.main_title or "Crafting", "Falha ao instanciar prop para posicionamento.", "error")
+        if cb then cb(nil, nil, false) end
+        return
+    end
+
+    SetEntityHeading(obj, spawnHeading)
+    SetEntityAsMissionEntity(obj, true, true)
+    SetEntityCollision(obj, false, false)
+    FreezeEntityPosition(obj, true)
+
+    local confirmedResult, finalResult = gizmoApi.await(obj, {
+        title = title or "Posicionar Bancada (TAB para modo de precisao)",
+        offset = vector3(0.0, 0.0, 0.0),
+        precisionMode = false,
+        precisionSpeed = 1.0,
+        allowFreeCameraToggle = true,
+        restoreOnCancel = true,
+        ui = true,
+        onUpdate = function()
+            return true
+        end,
+    })
+
+    local result = confirmedResult or finalResult or { confirmed = false, reason = "cancelado" }
+    local finalCoords = result.coords or GetEntityCoords(obj)
+    local finalRotation = result.rotation or GetEntityRotation(obj, 2)
+    local finalHeading = finalRotation and finalRotation.z or GetEntityHeading(obj)
+
+    if DoesEntityExist(obj) then
+        DeleteObject(obj)
+    end
+
+    if result.confirmed then
+        notify(locales.main_title or "Crafting", "Posicao confirmada pelo Gizmo.", "success")
+        if cb then cb(finalCoords, finalHeading, true) end
+    else
+        notify(locales.main_title or "Crafting", "Posicionamento cancelado.", "inform")
+        if cb then cb(nil, nil, false) end
+    end
+end
+
 function updateModelPosition(model, args)
-    local heading = 0
-    local obj
-    local created = false
+    pr_lib.callback.trigger("forge-crafting:GetEntityCoords", function(coords)
+        local initialCoords = coords or GetEntityCoords(PlayerPedId())
+        local initialHeading = (coords and coords.w) or 0.0
 
-    local modelHash = type(model) == "string" and joaat(model) or model
-    RequestModel(modelHash)
-    while not HasModelLoaded(modelHash) do Wait(10) end
-
-    CreateThread(function()
-        while true do
-            local raycastCam = pr_lib.raycast and pr_lib.raycast.cam or function() return false, nil, vector3(0,0,0) end
-            local hit, entity, coords = raycastCam(1, 4)
-
-            if not created and coords then
-                created = true
-                obj = CreateObject(modelHash, coords.x, coords.y, coords.z, false, false, false)
-                SetEntityCollision(obj, false, true)
-            end
-
-            if pr_lib.showTextUI then
-                pr_lib.showTextUI(table.concat(locales.help))
-            end
-
-            if IsControlPressed(0, 174) then
-                heading = heading + 1.5
-            end
-
-            if IsControlPressed(0, 175) then
-                heading = heading - 1.5
-            end
-
-            -- Backspace (cancelar)
-            if IsDisabledControlPressed(0, 177) then
-                if DoesEntityExist(obj) then DeleteObject(obj) end
-                Wait(100)
-                if pr_lib.hideTextUI then pr_lib.hideTextUI() end
-                TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                break
-            end
-
-            -- Enter (confirmar)
-            if IsDisabledControlPressed(0, 176) and coords then
-                local new_position = vector4(coords.x, coords.y, coords.z, heading)
+        placeBenchWithGizmo(model, initialCoords, initialHeading, "Editar Posicao: " .. (args.craft_name or ""), function(newCoords, newHeading, confirmed)
+            if confirmed and newCoords then
+                local new_position = vector4(newCoords.x, newCoords.y, newCoords.z, newHeading)
                 TriggerServerEvent("forge-crafting:UpdatePosition", new_position, args.craft_id, args.craft_name)
-                if DoesEntityExist(obj) then DeleteObject(obj) end
                 Wait(100)
                 TriggerServerEvent("forge-crafting:Update")
-                if pr_lib.hideTextUI then pr_lib.hideTextUI() end
-                TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                break
             end
-
-            if coords and DoesEntityExist(obj) then
-                SetEntityCoords(obj, coords.x, coords.y, coords.z)
-                SetEntityHeading(obj, heading)
-            end
-            Wait(0)
-        end
-    end)
-    collectgarbage("collect")
+            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+        end)
+    end, args.craft_id)
 end
 
 function createRecipe(numRecipe)
@@ -563,90 +603,39 @@ AddEventHandler("forge-crafting:CreateMenu", function()
                 end)
             end
 
-            local jobSelectionDone = false
-            if input[3] then
-                CreateJob(function()
-                    jobSelectionDone = true
+            local function startBenchPlacement()
+                placeBenchWithGizmo(input[2], nil, nil, "Posicionar Nova Bancada: " .. tostring(input[1]), function(coords, heading, confirmed)
+                    if confirmed and coords then
+                        local newData = {
+                            craft_name = input[1],
+                            prop = input[2],
+                            jobrequire = input[3],
+                            requireblip = input[4],
+                            blip = blip_data,
+                            jobs = jobData,
+                            propcoords = vector3(coords.x, coords.y, coords.z),
+                            heading = heading,
+                            jobenable = input[3],
+                            blipenable = input[4]
+                        }
+                        TriggerServerEvent("forge-crafting:CreateWorkShop", newData)
+                        notify(locales.main_title, locales.success_created, "success")
+                        Wait(100)
+                        TriggerServerEvent("forge-crafting:Update")
+                        TriggerEvent('forge-crafting:EditMenu')
+                    else
+                        TriggerEvent('forge-crafting:EditMenu')
+                    end
                 end)
-            else
-                jobSelectionDone = true
             end
 
-            local heading = 0
-            local obj
-            local created = false
-
-            local modelHash = type(input[2]) == "string" and joaat(input[2]) or input[2]
-            RequestModel(modelHash)
-            while not HasModelLoaded(modelHash) do Wait(10) end
-
-            CreateThread(function()
-                while true do
-                    if jobSelectionDone then
-                        local raycastCam = pr_lib.raycast and pr_lib.raycast.cam or function() return false, nil, vector3(0,0,0) end
-                        local hit, entity, coords = raycastCam(1, 4)
-
-                        if not created and coords then
-                            created = true
-                            obj = CreateObject(modelHash, coords.x, coords.y, coords.z, false, false, false)
-                            SetEntityCollision(obj, false, true)
-                        end
-
-                        if pr_lib.showTextUI then
-                            pr_lib.showTextUI(table.concat(locales.help))
-                        end
-
-                        if IsControlPressed(0, 174) then
-                            heading = heading + 1.5
-                        end
-
-                        if IsControlPressed(0, 175) then
-                            heading = heading - 1.5
-                        end
-
-                        -- Backspace (cancelar)
-                        if IsDisabledControlPressed(0, 177) then
-                            if DoesEntityExist(obj) then DeleteObject(obj) end
-                            Wait(100)
-                            if pr_lib.hideTextUI then pr_lib.hideTextUI() end
-                            TriggerEvent('forge-crafting:EditMenu')
-                            break
-                        end
-
-                        -- Enter (confirmar)
-                        if IsDisabledControlPressed(0, 176) and coords then
-                            local newData = {
-                                craft_name = input[1],
-                                prop = input[2],
-                                jobrequire = input[3],
-                                requireblip = input[4],
-                                blip = blip_data,
-                                jobs = jobData,
-                                propcoords = vector3(coords.x, coords.y, coords.z),
-                                heading = heading,
-                                jobenable = input[3],
-                                blipenable = input[4]
-                            }
-                            TriggerServerEvent("forge-crafting:CreateWorkShop", newData)
-                            if DoesEntityExist(obj) then DeleteObject(obj) end
-                            notify(locales.main_title, locales.success_created, "success")
-                            Wait(100)
-                            TriggerServerEvent("forge-crafting:Update")
-                            TriggerEvent('forge-crafting:EditMenu')
-                            if pr_lib.hideTextUI then pr_lib.hideTextUI() end
-                            break
-                        end
-
-                        if coords and DoesEntityExist(obj) then
-                            SetEntityCoords(obj, coords.x, coords.y, coords.z)
-                            SetEntityHeading(obj, heading)
-                        end
-                    end
-                    Wait(0)
-                end
-            end)
-
-            collectgarbage("collect")
+            if input[3] then
+                CreateJob(function()
+                    startBenchPlacement()
+                end)
+            else
+                startBenchPlacement()
+            end
         end, input[1])
     end)
 end)
