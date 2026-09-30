@@ -1,6 +1,6 @@
 ---
 gsd_state_version: '1.0'
-status: planning
+status: ready_to_execute
 progress:
   total_phases: 5
   completed_phases: 0
@@ -22,8 +22,8 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 
 Phase: 1 of 5 (Desacoplamento & Fundação pr_bridge)
 Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-09-30 — Inicialização do projeto concluída com sucesso
+Status: Ready to execute
+Last activity: 2026-09-30 — Planos 01-01 e 01-02 da Fase 1 criados
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -57,11 +57,9 @@ Progress: [░░░░░░░░░░] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [Init]: Desacoplamento total de `ox_lib`, `oxmysql` e `ox_target` em favor de `@pr_bridge/init.lua`.
-- [Init]: Adoção do Gizmo 3D nativo (`pr_lib.gizmo.await`) para colocação de bancadas no mundo.
-- [Init]: Eliminação de wrappers e pasta `bridge/` legada do forge-crafting — chamadas diretas a `pr_lib.*`.
-- [Init]: Construção de interface NUI dedicada para a bancada de trabalho inspirada em `nextgenfivem_crafting`.
-- [Init]: Autoridade total do servidor no consumo e entrega de receitas (eliminação de vulnerabilidade de exploit).
+- [Phase 1]: Desacoplamento total de `ox_lib`, `oxmysql` e `ox_target` em favor de `@pr_bridge/init.lua`.
+- [Phase 1]: Exclusão da pasta `bridge/` legada do forge-crafting e eliminação do wrapper `QT` em favor de chamadas diretas a `pr_lib.*`.
+- [Phase 1]: Migração de todo o acesso a banco de dados para `pr_lib.db` com `AUTO_INCREMENT` nativo no MySQL.
 
 ### Pending Todos
 
@@ -81,6 +79,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-30 19:10
-Stopped at: Inicialização concluída (PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md gerados)
+Last session: 2026-09-30 19:24
+Stopped at: Planejamento da Fase 1 concluído (CONTEXT.md, RESEARCH.md, 01-01-PLAN.md, 01-02-PLAN.md gerados)
 Resume file: None
