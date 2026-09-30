@@ -6,7 +6,7 @@ Este roadmap estrutura a transformação completa do **forge-crafting** em um re
 
 ## Phases
 
-- [ ] **Phase 1: Desacoplamento & Fundação pr_bridge** - Remover dependências externas, carregar @pr_bridge/init.lua, expurgar wrappers legados e migrar banco para pr_lib.db.
+- [x] **Phase 1: Desacoplamento & Fundação pr_bridge** - Remover dependências externas, carregar @pr_bridge/init.lua, expurgar wrappers legados e migrar banco para pr_lib.db.
 - [ ] **Phase 2: Sistema de Mundo, Gizmo 3D & Targeting** - Implementar posicionamento com Gizmo modal (pr_lib.gizmo.await), ciclo de vida dos props e targeting com pr_lib.target.
 - [ ] **Phase 3: Gestão Administrativa & Menus pr_bridge** - Migrar menus de criação/edição/exclusão de bancadas para os contextos, dialogs e alertas nativos do pr_bridge.
 - [ ] **Phase 4: Autoridade Server-side, Inventário & Blindagem** - Refatorar o ciclo de vida do crafting com validação autoritativa no servidor via pr_lib.inventory e pr_lib.callback.
@@ -25,8 +25,8 @@ Este roadmap estrutura a transformação completa do **forge-crafting** em um re
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Limpeza de manifest, remoção de dependências legadas e expurgo da pasta bridge/wrapper.
-- [ ] 01-02: Migração do schema e das consultas SQL para `pr_lib.db` com auto-increment.
+- [x] 01-01: Limpeza de manifest, remoção de dependências legadas e expurgo da pasta bridge/wrapper.
+- [x] 01-02: Migração do schema e das consultas SQL para `pr_lib.db` com auto-increment.
 
 ### Phase 2: Sistema de Mundo, Gizmo 3D & Targeting
 **Goal**: Gerenciar a presença física das bancadas de trabalho no mundo do jogo com ferramentas modernas do pr_bridge.
@@ -91,7 +91,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Desacoplamento & Fundação pr_bridge | 0/2 | Not started | - |
+| 1. Desacoplamento & Fundação pr_bridge | 2/2 | Complete | 2026-09-30 |
 | 2. Sistema de Mundo, Gizmo 3D & Targeting | 0/2 | Not started | - |
 | 3. Gestão Administrativa & Menus pr_bridge | 0/2 | Not started | - |
 | 4. Autoridade Server-side, Inventário & Blindagem | 0/2 | Not started | - |
