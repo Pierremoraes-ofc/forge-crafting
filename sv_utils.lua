@@ -21,21 +21,48 @@ local function addCraftingSkill(source)
     end)
 end
 
-local function isValidTask(task)
-    return task == "add" or task == "remove"
-end
+local activeCraftSessions = {}
 
-RegisterNetEvent("forge-crafting:ItemInterval", function(task, item, count)
-    local src = source
-    if isValidTask(task) and pr_lib.framework.GetPlayer(src) then
-        if task == "add" then
-            pr_lib.inventory.AddItem(src, item, count)
-            addCraftingSkill(src)
-        elseif task == "remove" then
-            pr_lib.inventory.RemoveItem(src, item, count)
+local function getBenchById(craft_id)
+    craft_id = tonumber(craft_id)
+    for _, bench in ipairs(workshops or {}) do
+        if tonumber(bench.id) == craft_id then
+            return bench
         end
     end
-end)
+    return nil
+end
+
+local function getPlayerLevel(source)
+    local resource = Config.ReputationResource or 'forge-reputation'
+    if GetResourceState(resource) ~= 'started' then return 0 end
+    local ok, level = pcall(function()
+        return exports[resource]:getCurrentLevel(source, Config.CraftingSkill or 'crafting')
+    end)
+    if not ok then return 0 end
+    if type(level) == 'string' and level:lower() == 'maestria' then return 999999 end
+    return tonumber(level) or 0
+end
+
+local function isPlayerAuthorizedForBench(source, bench)
+    if not bench.jobenb or not bench.jobs or #bench.jobs == 0 then
+        return true
+    end
+
+    local playerJob = pr_lib.framework and pr_lib.framework.GetPlayerJob and pr_lib.framework.GetPlayerJob(source)
+    local playerGang = pr_lib.framework and pr_lib.framework.GetPlayerGang and pr_lib.framework.GetPlayerGang(source)
+
+    local jobName = type(playerJob) == "table" and (playerJob.name or playerJob.id) or tostring(playerJob or "")
+    local gangName = type(playerGang) == "table" and (playerGang.name or playerGang.id) or tostring(playerGang or "")
+
+    for _, j in ipairs(bench.jobs) do
+        local required = type(j) == "table" and (j.value or j.name) or tostring(j)
+        if required == jobName or required == gangName then
+            return true
+        end
+    end
+    return false
+end
 
 local function isPlayerAdmin(source)
     if not source or source == 0 then return true end
@@ -326,6 +353,157 @@ pr_lib.callback.register("forge-crafting:CanCraftItem", function(source, recipe)
     end
 
     return canCraft
+end)
+
+pr_lib.callback.register("forge-crafting:StartCraft", function(source, craft_id, item_name)
+    local src = source
+    if not pr_lib.framework.GetPlayer(src) then
+        return false, "Jogador não identificado.", nil
+    end
+
+    if activeCraftSessions[src] then
+        return false, "Você já possui uma fabricação em andamento.", nil
+    end
+
+    local bench = getBenchById(craft_id)
+    if not bench then
+        return false, "Bancada de criação não localizada.", nil
+    end
+
+    -- 1. Validação de proximidade física
+    local ped = GetPlayerPed(src)
+    local playerCoords = GetEntityCoords(ped)
+    local benchCoords = vector3(bench.coords.x, bench.coords.y, bench.coords.z)
+    local dist = #(playerCoords - benchCoords)
+    if dist > 4.5 then
+        return false, locales.distance_behavior or "Você está longe demais da bancada de criação!", nil
+    end
+
+    -- 2. Validação de cargos/gangues
+    if not isPlayerAuthorizedForBench(src, bench) then
+        return false, locales.insufficient_permission or "Você não possui permissão para usar esta bancada.", nil
+    end
+
+    -- 3. Carregar receita autoritativa no banco
+    local recipeRow = pr_lib.db.single(
+        'SELECT * FROM `forge-crafting-items` WHERE craft_id = ? AND item = ?',
+        { craft_id, item_name }
+    )
+    if not recipeRow then
+        return false, "Receita não encontrada para esta bancada.", nil
+    end
+
+    -- 4. Validação de nível mínimo de maestria
+    local requiredLevel = tonumber(recipeRow.level) or 0
+    if requiredLevel > 0 then
+        local playerLevel = getPlayerLevel(src)
+        if playerLevel < requiredLevel then
+            return false, string.format("Nível insuficiente de crafting! Exigido: Nível %d (Seu: %d).", requiredLevel, playerLevel), nil
+        end
+    end
+
+    -- 5. Validação e consumo seguro dos insumos
+    local recipe = json.decode(recipeRow.recipe) or {}
+    if #recipe == 0 then
+        return false, "Esta receita está configurada incorretamente (sem ingredientes).", nil
+    end
+
+    for _, ing in ipairs(recipe) do
+        local requiredAmount = tonumber(ing.amount) or 1
+        local currentCount = pr_lib.inventory.GetItemCount and pr_lib.inventory.GetItemCount(src, ing.item) or 0
+        if currentCount < requiredAmount then
+            return false, locales.cannot_craft or "Você não possui todos os itens necessários no inventário.", nil
+        end
+    end
+
+    local consumedList = {}
+    for _, ing in ipairs(recipe) do
+        local amount = tonumber(ing.amount) or 1
+        pr_lib.inventory.RemoveItem(src, ing.item, amount)
+        consumedList[#consumedList + 1] = { item = ing.item, amount = amount }
+    end
+
+    activeCraftSessions[src] = {
+        craft_id = craft_id,
+        item = recipeRow.item,
+        item_label = recipeRow.item_label or recipeRow.item,
+        amount = tonumber(recipeRow.amount) or 1,
+        duration = tonumber(recipeRow.time) or 5,
+        consumed = consumedList,
+        benchCoords = benchCoords,
+        startTime = GetGameTimer()
+    }
+
+    return true, "Fabricação iniciada.", {
+        item = recipeRow.item,
+        item_label = recipeRow.item_label or recipeRow.item,
+        amount = tonumber(recipeRow.amount) or 1,
+        time = tonumber(recipeRow.time) or 5,
+        model = recipeRow.model,
+        anim = recipeRow.anim,
+        level = recipeRow.level
+    }
+end)
+
+pr_lib.callback.register("forge-crafting:FinishCraft", function(source)
+    local src = source
+    local session = activeCraftSessions[src]
+    if not session then
+        return false, "Nenhuma sessão de fabricação ativa."
+    end
+
+    local ped = GetPlayerPed(src)
+    local playerCoords = GetEntityCoords(ped)
+    local dist = #(playerCoords - session.benchCoords)
+    if dist > 4.5 then
+        for _, ing in ipairs(session.consumed) do
+            pr_lib.inventory.AddItem(src, ing.item, ing.amount)
+        end
+        activeCraftSessions[src] = nil
+        return false, locales.distance_behavior or "Você se afastou demais da bancada! Materiais devolvidos."
+    end
+
+    local elapsed = GetGameTimer() - session.startTime
+    local expectedMs = (session.duration * 1000) - 1500
+    if elapsed < expectedMs then
+        for _, ing in ipairs(session.consumed) do
+            pr_lib.inventory.AddItem(src, ing.item, ing.amount)
+        end
+        activeCraftSessions[src] = nil
+        return false, "Operação inválida: tempo de fabricação inconsistente."
+    end
+
+    pr_lib.inventory.AddItem(src, session.item, session.amount)
+    addCraftingSkill(src)
+
+    local successMessage = (locales.successfull_crafted or "Você criou com sucesso ") .. session.item_label .. (locales.in_amount_of or " x") .. session.amount
+    serverNotification(src, locales.main_title or "Crafting", successMessage, "success")
+
+    activeCraftSessions[src] = nil
+    return true, successMessage
+end)
+
+RegisterNetEvent("forge-crafting:CancelCraft", function()
+    local src = source
+    local session = activeCraftSessions[src]
+    if session then
+        for _, ing in ipairs(session.consumed) do
+            pr_lib.inventory.AddItem(src, ing.item, ing.amount)
+        end
+        activeCraftSessions[src] = nil
+        serverNotification(src, locales.main_title or "Crafting", locales.canceled_crafting_proccess or "Fabricação cancelada! Materiais devolvidos.", "inform")
+    end
+end)
+
+AddEventHandler("playerDropped", function()
+    local src = source
+    local session = activeCraftSessions[src]
+    if session then
+        for _, ing in ipairs(session.consumed) do
+            pr_lib.inventory.AddItem(src, ing.item, ing.amount)
+        end
+        activeCraftSessions[src] = nil
+    end
 end)
 
 RegisterNetEvent("forge-crafting:UpdatePosition", function(new_position, id, craft_name)

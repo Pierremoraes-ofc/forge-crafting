@@ -128,6 +128,7 @@ local function previewCraftable(data)
         arrow = true,
         event = "forge-crafting:CraftCertainItem",
         args = {
+            craft_id = data.menu_id,
             craft_item = data.craft_item,
             item_label = data.item_label,
             time = data.time,
@@ -388,86 +389,98 @@ AddEventHandler("onResourceStop", function(res)
 end)
 
 AddEventHandler("forge-crafting:CraftCertainItem", function(data)
-    pr_lib.callback.trigger("forge-crafting:CanCraftItem", function(canCraft)
-        if canCraft then
-            isBusy = true
+    local craftId = data.craft_id
+    local itemName = data.craft_item
+
+    pr_lib.callback.trigger("forge-crafting:StartCraft", function(success, message, craftData)
+        if not success then
             toggleCam(false)
-
-            local ped = PlayerPedId()
-            if tostring(data.anim) == "" or not data.anim then
-                local animDict = 'mini@repair'
-                RequestAnimDict(animDict)
-                while not HasAnimDictLoaded(animDict) do Wait(10) end
-                TaskPlayAnim(ped, animDict, 'fixing_a_ped', 8.0, -8.0, -1, 2, 0, false, false, false)
-            else
-                if exports.scully_emotemenu then
-                    exports.scully_emotemenu:playEmoteByCommand(data.anim, 0)
-                end
-            end
-
-            local duration = (data.time or 5) * 1000
-            local progressOptions = {
-                duration = duration,
-                label = locales.craftingg .. data.item_label,
-                useWhileDead = false,
-                canCancel = true,
-                disable = {
-                    car = true,
-                    move = true,
-                    combat = true,
-                    mouse = false
-                }
-            }
-
-            local progressFn = pr_lib.progressBar or (pr_lib.ox and pr_lib.ox.progressBar)
-            local craftSuccess = false
-            if progressFn then
-                craftSuccess = progressFn(progressOptions)
-            else
-                Wait(duration)
-                craftSuccess = true
-            end
-
-            isBusy = false
-            ClearPedTasksImmediately(ped)
-
-            if craftSuccess then
-                for _, v in pairs(data.recipe or {}) do
-                    TriggerServerEvent("forge-crafting:ItemInterval", "remove", v.item, v.amount)
-                end
-                TriggerServerEvent("forge-crafting:ItemInterval", "add", data.craft_item, data.amount)
-
-                if pr_lib.notifications and pr_lib.notifications.Notify then
-                    pr_lib.notifications.Notify({
-                        title = locales.main_title,
-                        description = locales.successfull_crafted .. data.item_label .. locales.in_amount_of .. data.amount,
-                        type = "success"
-                    })
-                end
-
-                if DoesEntityExist(CRAFTABLE_OBJ) then DeleteObject(CRAFTABLE_OBJ) end
-                PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
-            else
-                if pr_lib.notifications and pr_lib.notifications.Notify then
-                    pr_lib.notifications.Notify({
-                        title = locales.main_title,
-                        description = locales.canceled_crafting_proccess,
-                        type = "error"
-                    })
-                end
-                toggleCam(false)
-                if DoesEntityExist(CRAFTABLE_OBJ) then DeleteObject(CRAFTABLE_OBJ) end
-            end
-        else
+            if DoesEntityExist(CRAFTABLE_OBJ) then DeleteObject(CRAFTABLE_OBJ) end
             if pr_lib.notifications and pr_lib.notifications.Notify then
                 pr_lib.notifications.Notify({
-                    title = locales.main_title,
-                    description = locales.cannot_craft,
+                    title = locales.main_title or "Crafting",
+                    description = message or locales.cannot_craft,
                     type = "error"
                 })
             end
-            toggleCam(false)
-            if DoesEntityExist(CRAFTABLE_OBJ) then DeleteObject(CRAFTABLE_OBJ) end
+            return
         end
-    end, data.recipe)
+
+        isBusy = true
+        toggleCam(false)
+
+        local ped = PlayerPedId()
+        local animDict = 'mini@repair'
+        local animClip = 'fixing_a_ped'
+        local animOption = (craftData and craftData.anim) or data.anim
+
+        if animOption and animOption ~= "" then
+            if exports.scully_emotemenu then
+                exports.scully_emotemenu:playEmoteByCommand(animOption, 0)
+            else
+                RequestAnimDict(animDict)
+                local timeout = GetGameTimer() + 2000
+                while not HasAnimDictLoaded(animDict) and GetGameTimer() < timeout do Wait(10) end
+                if HasAnimDictLoaded(animDict) then
+                    TaskPlayAnim(ped, animDict, animClip, 8.0, -8.0, -1, 1, 0, false, false, false)
+                end
+            end
+        else
+            RequestAnimDict(animDict)
+            local timeout = GetGameTimer() + 2000
+            while not HasAnimDictLoaded(animDict) and GetGameTimer() < timeout do Wait(10) end
+            if HasAnimDictLoaded(animDict) then
+                TaskPlayAnim(ped, animDict, animClip, 8.0, -8.0, -1, 1, 0, false, false, false)
+            end
+        end
+
+        local duration = ((craftData and craftData.time) or (data.time or 5)) * 1000
+        local itemLabel = (craftData and craftData.item_label) or (data.item_label or itemName)
+        local progressOptions = {
+            duration = duration,
+            label = locales.craftingg .. itemLabel,
+            useWhileDead = false,
+            canCancel = true,
+            disable = {
+                car = true,
+                move = true,
+                combat = true,
+                mouse = false
+            }
+        }
+
+        local progressFn = pr_lib.progressBar or (pr_lib.ox and pr_lib.ox.progressBar)
+        local craftSuccess = false
+        if progressFn then
+            craftSuccess = progressFn(progressOptions)
+        else
+            Wait(duration)
+            craftSuccess = true
+        end
+
+        isBusy = false
+        ClearPedTasksImmediately(ped)
+
+        if craftSuccess then
+            pr_lib.callback.trigger("forge-crafting:FinishCraft", function(finished, finishMsg)
+                if finished then
+                    PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", 1)
+                else
+                    if pr_lib.notifications and pr_lib.notifications.Notify then
+                        pr_lib.notifications.Notify({
+                            title = locales.main_title or "Crafting",
+                            description = finishMsg or "Erro ao concluir a fabricação.",
+                            type = "error"
+                        })
+                    end
+                end
+            end)
+        else
+            TriggerServerEvent("forge-crafting:CancelCraft")
+        end
+
+        if DoesEntityExist(CRAFTABLE_OBJ) then
+            DeleteObject(CRAFTABLE_OBJ)
+        end
+    end, craftId, itemName)
 end)

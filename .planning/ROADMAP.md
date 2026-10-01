@@ -9,7 +9,7 @@ Este roadmap estrutura a transformação completa do **forge-crafting** em um re
 - [x] **Phase 1: Desacoplamento & Fundação pr_bridge** - Remover dependências externas, carregar @pr_bridge/init.lua, expurgar wrappers legados e migrar banco para pr_lib.db.
 - [x] **Phase 2: Sistema de Mundo, Gizmo 3D & Targeting** - Implementar posicionamento com Gizmo modal (pr_lib.gizmo.await), ciclo de vida dos props e targeting com pr_lib.target.
 - [x] **Phase 3: Gestão Administrativa & Menus pr_bridge** - Migrar menus de criação/edição/exclusão de bancadas para os contextos, dialogs e alertas nativos do pr_bridge.
-- [ ] **Phase 4: Autoridade Server-side, Inventário & Blindagem** - Refatorar o ciclo de vida do crafting com validação autoritativa no servidor via pr_lib.inventory e pr_lib.callback.
+- [x] **Phase 4: Autoridade Server-side, Inventário & Blindagem** - Refatorar o ciclo de vida do crafting com validação autoritativa no servidor via pr_lib.inventory e pr_lib.callback.
 - [ ] **Phase 5: Nova NUI da Bancada de Craft** - Desenvolver e integrar a interface gráfica NUI interativa para fabricação de receitas diretamente na bancada.
 
 ## Phase Details
@@ -67,8 +67,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Refatoração do backend de crafting com validação de proximidade, insumos e níveis no servidor.
-- [ ] 04-02: Conexão do client com temporizadores e animações do `pr_bridge` e concessão de XP.
+- [x] 04-01: Refatoração do backend de crafting com validação de proximidade, insumos e níveis no servidor.
+- [x] 04-02: Conexão do client com temporizadores e animações do `pr_bridge` e concessão de XP.
 
 ### Phase 5: Nova NUI da Bancada de Craft
 **Goal**: Criar uma interface NUI imersiva e moderna para a bancada de trabalho, substituindo o menu de contexto padrão dos jogadores.
@@ -94,5 +94,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Desacoplamento & Fundação pr_bridge | 2/2 | Complete | 2026-09-30 |
 | 2. Sistema de Mundo, Gizmo 3D & Targeting | 2/2 | Complete | 2026-09-30 |
 | 3. Gestão Administrativa & Menus pr_bridge | 2/2 | Complete | 2026-09-30 |
-| 4. Autoridade Server-side, Inventário & Blindagem | 0/2 | Not started | - |
+| 4. Autoridade Server-side, Inventário & Blindagem | 2/2 | Complete | 2026-09-30 |
 | 5. Nova NUI da Bancada de Craft | 0/2 | Not started | - |
