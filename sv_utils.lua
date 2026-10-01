@@ -37,12 +37,43 @@ RegisterNetEvent("forge-crafting:ItemInterval", function(task, item, count)
     end
 end)
 
+local function isPlayerAdmin(source)
+    if not source or source == 0 then return true end
+    if IsPlayerAceAllowed(source, 'admin') then return true end
+    if IsPlayerAceAllowed(source, 'crafting') then return true end
+    if IsPlayerAceAllowed(source, 'command.' .. tostring(Config.CreateTableCommand or "create")) then return true end
+    if IsPlayerAceAllowed(source, 'command.' .. tostring(Config.EditMenuCommand or "edit")) then return true end
+    return false
+end
+
+local function registerServerAdminCommand(cmd, eventName)
+    if not cmd or cmd == "" then return end
+    RegisterCommand(cmd, function(source, args)
+        if isPlayerAdmin(source) then
+            if source > 0 then
+                TriggerClientEvent(eventName, source)
+            else
+                print("[forge-crafting] Comandos administrativos de interface devem ser executados no jogo por um jogador.")
+            end
+        else
+            serverNotification(source, locales.main_title or "Crafting", locales.insufficient_permission or "Você não possui permissão para usar esta função.", "error")
+        end
+    end, false)
+end
+
+registerServerAdminCommand(Config.CreateTableCommand, "forge-crafting:CreateMenu")
+registerServerAdminCommand(Config.EditMenuCommand, "forge-crafting:EditMenu")
+
+if Config.Pfx and Config.Pfx ~= "" then
+    registerServerAdminCommand(Config.Pfx .. Config.CreateTableCommand, "forge-crafting:CreateMenu")
+    registerServerAdminCommand(Config.Pfx .. Config.EditMenuCommand, "forge-crafting:EditMenu")
+end
+
 pr_lib.callback.register('forge-crafting:PermisionCheck', function(source)
-    if IsPlayerAceAllowed(source, 'admin') or IsPlayerAceAllowed(source, 'crafting') then
+    if isPlayerAdmin(source) then
         return true
     else
-        local permMsg = locales.insufficient_permission or locales.insuficient_permission or "Sem permissão"
-        serverNotification(source, locales.main_title, permMsg, "error")
+        serverNotification(source, locales.main_title, locales.insufficient_permission, "error")
         return false
     end
 end)

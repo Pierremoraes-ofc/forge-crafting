@@ -14,16 +14,20 @@ local function registerCraftingCommand(command, event)
     if not command or command == '' then return end
 
     RegisterCommand(command, function()
-        TriggerEvent(event)
-    end)
+        pr_lib.callback.trigger('forge-crafting:PermisionCheck', function(hasPerm)
+            if hasPerm then
+                TriggerEvent(event)
+            end
+        end)
+    end, false)
 end
 
-registerCraftingCommand(Config.Pfx .. Config.CreateTableCommand, "forge-crafting:CreateMenu")
-registerCraftingCommand(Config.Pfx .. Config.EditMenuCommand, "forge-crafting:EditMenu")
+registerCraftingCommand(Config.CreateTableCommand, "forge-crafting:CreateMenu")
+registerCraftingCommand(Config.EditMenuCommand, "forge-crafting:EditMenu")
 
-if Config.Pfx ~= '' then
-    registerCraftingCommand(Config.CreateTableCommand, "forge-crafting:CreateMenu")
-    registerCraftingCommand(Config.EditMenuCommand, "forge-crafting:EditMenu")
+if Config.Pfx and Config.Pfx ~= '' then
+    registerCraftingCommand(Config.Pfx .. Config.CreateTableCommand, "forge-crafting:CreateMenu")
+    registerCraftingCommand(Config.Pfx .. Config.EditMenuCommand, "forge-crafting:EditMenu")
 end
 
 AddEventHandler('forge-crafting:EditMenu', function()
@@ -89,7 +93,7 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                         local input = pr_lib.inputDialog(args.craft_name, {
                             { type = 'input', label = locales.new_name, placeholder = locales.desc_new_name, required = true, icon = "signature" },
                         })
-                        if not input then return TriggerEvent('forge-crafting:OpenEditFunctions', args) end
+                        if not input then return pr_lib.showContext('edit_opcije') end
                         local warning = pr_lib.alertDialog({
                             header = locales.automaticmessage,
                             content = locales.sure_question .. args.craft_name .. locales.to_question .. input[1] .. "?",
@@ -99,13 +103,13 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                         if warning == "confirm" then
                             TriggerServerEvent("forge-crafting:ChangeName", args.craft_id, input[1])
                             notify(locales.main_title,
-                                locales.changedname .. "" .. args.craft_name .. "" .. locales.to_question .. "" .. input[1],
+                                locales.changedname .. args.craft_name .. locales.to_question .. input[1],
                                 "success")
                             Wait(100)
                             TriggerServerEvent("forge-crafting:Update")
                             TriggerEvent('forge-crafting:EditMenu')
                         else
-                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                            pr_lib.showContext('edit_opcije')
                             notify(locales.main_title, locales.canceled_namechanging, "inform")
                         end
                     end,
@@ -114,13 +118,13 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                     title = locales.change_height,
                     icon = "fa-solid fa-arrows-up-down",
                     metadata = {
-                        { label = locales.current_offset, value = args.offset },
+                        { label = locales.current_offset or "Offset Atual", value = args.offset },
                     },
                     onSelect = function()
                         local input = pr_lib.inputDialog(locales.change_height, {
-                            { type = 'number', label = locales.new_offset, default = args.offset, required = true, min = -10.0, max = 10.0, precision = 2, step = 0.01 },
+                            { type = 'number', label = locales.new_height, default = args.offset, required = true, min = -10.0, max = 10.0, precision = 2, step = 0.01 },
                         })
-                        if not input then return TriggerEvent('forge-crafting:OpenEditFunctions', args) end
+                        if not input then return pr_lib.showContext('edit_opcije') end
                         TriggerServerEvent("forge-crafting:UpdateHeight", input[1], args.craft_id)
                         Wait(100)
                         TriggerEvent('forge-crafting:EditMenu')
@@ -137,14 +141,13 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                                 icon = "plus",
                                 onSelect = function()
                                     pr_lib.callback.trigger('forge-crafting:GetListItems', function(result)
-                                        if not result then return end
                                         local adder = pr_lib.inputDialog(args.craft_name, {
                                             { type = 'select', label = locales.item, description = locales.desc_add_1, options = GetBaseItems(), required = true, searchable = true },
                                             { type = 'input', label = locales.item_label, description = locales.desc_add_2, required = true },
                                             { type = 'number', label = locales.craft_items_amount, description = locales.desc_add_3, required = true, min = 1 },
                                             { type = 'number', label = locales.craft_time, description = locales.desc_add_4, required = true, min = 1 },
                                             { type = 'number', label = locales.how_many_items, description = locales.desc_add_5, required = true, min = 1 },
-                                            { type = 'input', label = locales.item_model, description = locales.desc_add_6, required = true },
+                                            { type = 'input', label = locales.item_model, description = locales.desc_add_6, required = false },
                                             { type = 'input', label = locales.item_anim, description = locales.desc_add_7, required = false },
                                             { type = 'number', label = locales.item_level, description = locales.desc_add_8, required = false },
                                         })
@@ -158,148 +161,160 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                                             amount = adder[3],
                                             time = adder[4],
                                             recipe = recipeTable,
-                                            model = adder[6],
-                                            anim = adder[7],
-                                            level = adder[8]
+                                            model = adder[6] and adder[6] ~= "" and adder[6] or nil,
+                                            anim = adder[7] and adder[7] ~= "" and adder[7] or nil,
+                                            level = adder[8] and tonumber(adder[8]) or nil
                                         }
                                         TriggerServerEvent("forge-crafting:AddItemCrafting", data)
                                         notify(locales.main_title, locales.success_add_item, "success")
+                                        Wait(100)
+                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
                                     end, args.craft_id)
                                 end,
                             }
                         }
 
                         pr_lib.callback.trigger('forge-crafting:GetListItems', function(result)
-                            if not result then return end
-                            for i = 1, #result do
-                                local someData = result[i]
-                                options[#options + 1] = {
-                                    title = someData.item_label,
-                                    description = locales.press_edit_item,
-                                    onSelect = function()
-                                        pr_lib.RegisterContext({
-                                            id = 'edit_options_items',
-                                            menu = 'items_listiii',
-                                            title = someData.item_label,
-                                            options = {
-                                                {
-                                                    title = locales.delete_item,
-                                                    icon = "trash",
-                                                    description = locales.desc_deleting_item,
-                                                    onSelect = function()
-                                                        local warning = pr_lib.alertDialog({
-                                                            header = locales.automaticmessage,
-                                                            content = locales.sure_delete_item .. someData.item_label .. "?",
-                                                            centered = true,
-                                                            cancel = true
-                                                        })
-                                                        if warning == "confirm" then
-                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, nil, "delete")
+                            if result and type(result) == "table" then
+                                for i = 1, #result do
+                                    local someData = result[i]
+                                    options[#options + 1] = {
+                                        title = someData.item_label,
+                                        description = locales.press_edit_item,
+                                        icon = "cube",
+                                        arrow = true,
+                                        onSelect = function()
+                                            pr_lib.RegisterContext({
+                                                id = 'edit_options_items',
+                                                menu = 'items_listiii',
+                                                title = someData.item_label,
+                                                options = {
+                                                    {
+                                                        title = locales.delete_item,
+                                                        icon = "trash",
+                                                        description = locales.desc_deleting_item,
+                                                        onSelect = function()
+                                                            local warning = pr_lib.alertDialog({
+                                                                header = locales.automaticmessage,
+                                                                content = locales.sure_delete_item .. someData.item_label .. "?",
+                                                                centered = true,
+                                                                cancel = true
+                                                            })
+                                                            if warning == "confirm" then
+                                                                TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, nil, "delete")
+                                                                Wait(100)
+                                                                TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                                                            else
+                                                                pr_lib.showContext('edit_options_items')
+                                                            end
+                                                        end,
+                                                    },
+                                                    {
+                                                        title = locales.change_time,
+                                                        icon = "clock",
+                                                        description = locales.desc_change_time,
+                                                        onSelect = function()
+                                                            local timer = pr_lib.inputDialog(locales.new_time, {
+                                                                { type = 'number', label = locales.new_time_input, default = someData.time, required = true, min = 1 },
+                                                            })
+                                                            if not timer then return pr_lib.showContext('edit_options_items') end
+                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, timer[1], "time")
                                                             Wait(100)
                                                             TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                        else
+                                                        end,
+                                                    },
+                                                    {
+                                                        title = locales.change_recipe,
+                                                        icon = "scroll",
+                                                        description = locales.desc_change_recipe,
+                                                        onSelect = function()
+                                                            local updatera = pr_lib.inputDialog(args.craft_name, {
+                                                                { type = 'number', label = locales.how_many_items, description = locales.desc_add_5, required = true, min = 1 },
+                                                            })
+                                                            if not updatera then return pr_lib.showContext('edit_options_items') end
+                                                            local recipeTable = createRecipe(updatera[1])
+                                                            if not recipeTable then return pr_lib.showContext('edit_options_items') end
+                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, recipeTable, "recipe")
+                                                            Wait(100)
                                                             TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                        end
-                                                    end,
-                                                },
-                                                {
-                                                    title = locales.change_time,
-                                                    icon = "clock",
-                                                    description = locales.desc_change_time,
-                                                    onSelect = function()
-                                                        local timer = pr_lib.inputDialog(locales.new_time, {
-                                                            { type = 'number', label = locales.new_time_input, required = true, min = 1 },
-                                                        })
-                                                        if not timer then return pr_lib.showContext('edit_options_items') end
-                                                        TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, timer[1], "time")
-                                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                    end,
-                                                },
-                                                {
-                                                    title = locales.change_recipe,
-                                                    icon = "scroll",
-                                                    description = locales.desc_change_recipe,
-                                                    onSelect = function()
-                                                        local updatera = pr_lib.inputDialog(args.craft_name, {
-                                                            { type = 'number', label = locales.how_many_items, description = locales.desc_add_5, required = true, min = 1 },
-                                                        })
-                                                        if not updatera then return pr_lib.showContext('edit_options_items') end
-                                                        local recipeTable = createRecipe(updatera[1])
-                                                        if not recipeTable then return pr_lib.showContext('edit_options_items') end
-                                                        TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, recipeTable, "recipe")
-                                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                    end,
-                                                },
-                                                {
-                                                    title = locales.change_label,
-                                                    icon = "signature",
-                                                    description = locales.desc_change_label,
-                                                    onSelect = function()
-                                                        local name = pr_lib.inputDialog(args.craft_name, {
-                                                            { type = 'input', label = locales.item_label, required = true },
-                                                        })
-                                                        if not name then return pr_lib.showContext('edit_options_items') end
-                                                        TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, name[1], "label")
-                                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                    end,
-                                                },
-                                                {
-                                                    title = locales.change_amount,
-                                                    icon = "plus-minus",
-                                                    description = locales.desc_change_amount,
-                                                    onSelect = function()
-                                                        local amount = pr_lib.inputDialog(args.craft_name, {
-                                                            { type = 'number', label = locales.item_amount, required = true, min = 1 },
-                                                        })
-                                                        if not amount then return pr_lib.showContext('edit_options_items') end
-                                                        TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, amount[1], "amount")
-                                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                    end,
-                                                },
-                                                {
-                                                    title = locales.change_model,
-                                                    icon = "box",
-                                                    description = locales.desc_change_model,
-                                                    onSelect = function()
-                                                        local model = pr_lib.inputDialog(args.craft_name, {
-                                                            { type = 'input', label = locales.item_model, required = true },
-                                                        })
-                                                        if not model then return pr_lib.showContext('edit_options_items') end
-                                                        TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, model[1], "model")
-                                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                    end,
-                                                },
-                                                {
-                                                    title = locales.change_anim,
-                                                    icon = "person-walking",
-                                                    description = locales.desc_change_anim,
-                                                    onSelect = function()
-                                                        local anim = pr_lib.inputDialog(args.craft_name, {
-                                                            { type = 'input', label = locales.item_anim, required = true },
-                                                        })
-                                                        if not anim then return pr_lib.showContext('edit_options_items') end
-                                                        TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, anim[1], "anim")
-                                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                    end,
-                                                },
-                                                {
-                                                    title = locales.change_level,
-                                                    icon = "star",
-                                                    description = locales.desc_change_level,
-                                                    onSelect = function()
-                                                        local level = pr_lib.inputDialog(args.craft_name, {
-                                                            { type = 'number', label = locales.item_level, required = true },
-                                                        })
-                                                        if not level then return pr_lib.showContext('edit_options_items') end
-                                                        TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, level[1], "level")
-                                                        TriggerEvent('forge-crafting:OpenEditFunctions', args)
-                                                    end,
+                                                        end,
+                                                    },
+                                                    {
+                                                        title = locales.change_label,
+                                                        icon = "signature",
+                                                        description = locales.desc_change_label,
+                                                        onSelect = function()
+                                                            local name = pr_lib.inputDialog(args.craft_name, {
+                                                                { type = 'input', label = locales.item_label, default = someData.item_label, required = true },
+                                                            })
+                                                            if not name then return pr_lib.showContext('edit_options_items') end
+                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, name[1], "label")
+                                                            Wait(100)
+                                                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                                                        end,
+                                                    },
+                                                    {
+                                                        title = locales.change_amount,
+                                                        icon = "plus-minus",
+                                                        description = locales.desc_change_amount,
+                                                        onSelect = function()
+                                                            local amount = pr_lib.inputDialog(args.craft_name, {
+                                                                { type = 'number', label = locales.item_amount, default = someData.amount, required = true, min = 1 },
+                                                            })
+                                                            if not amount then return pr_lib.showContext('edit_options_items') end
+                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, amount[1], "amount")
+                                                            Wait(100)
+                                                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                                                        end,
+                                                    },
+                                                    {
+                                                        title = locales.change_model,
+                                                        icon = "box",
+                                                        description = locales.desc_change_model,
+                                                        onSelect = function()
+                                                            local model = pr_lib.inputDialog(args.craft_name, {
+                                                                { type = 'input', label = locales.item_model, default = someData.model or "", required = false },
+                                                            })
+                                                            if not model then return pr_lib.showContext('edit_options_items') end
+                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, model[1], "model")
+                                                            Wait(100)
+                                                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                                                        end,
+                                                    },
+                                                    {
+                                                        title = locales.change_anim,
+                                                        icon = "person-walking",
+                                                        description = locales.desc_change_anim,
+                                                        onSelect = function()
+                                                            local anim = pr_lib.inputDialog(args.craft_name, {
+                                                                { type = 'input', label = locales.item_anim, default = someData.anim or "", required = false },
+                                                            })
+                                                            if not anim then return pr_lib.showContext('edit_options_items') end
+                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, anim[1], "anim")
+                                                            Wait(100)
+                                                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                                                        end,
+                                                    },
+                                                    {
+                                                        title = locales.change_level,
+                                                        icon = "star",
+                                                        description = locales.desc_change_level,
+                                                        onSelect = function()
+                                                            local level = pr_lib.inputDialog(args.craft_name, {
+                                                                { type = 'number', label = locales.item_level, default = someData.level or 0, required = false },
+                                                            })
+                                                            if not level then return pr_lib.showContext('edit_options_items') end
+                                                            TriggerServerEvent("forge-crafting:UpdateItems", args.craft_id, someData.item, level[1], "level")
+                                                            Wait(100)
+                                                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                                                        end,
+                                                    }
                                                 }
-                                            }
-                                        })
-                                        pr_lib.showContext('edit_options_items')
-                                    end,
-                                }
+                                            })
+                                            pr_lib.showContext('edit_options_items')
+                                        end,
+                                    }
+                                end
                             end
 
                             pr_lib.RegisterContext({
@@ -317,53 +332,43 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                     icon = "briefcase",
                     description = locales.desc_job_options,
                     onSelect = function()
-                        pr_lib.callback.trigger('forge-crafting:CheckOptionsEnable', function(jobRequire)
-                            local options = {}
-                            if jobRequire then
-                                options = {
-                                    {
-                                        title = locales.enable_jobs,
-                                        icon = "unlock",
-                                        description = locales.desc_enable_jobs,
-                                        onSelect = function()
-                                            pr_lib.RegisterContext({
-                                                id = 'jobs_editss',
-                                                menu = 'edit_opcije',
-                                                title = locales.job_options,
-                                                options = options
-                                            })
+                        pr_lib.callback.trigger('forge-crafting:CheckOptionsEnable', function(isPublic)
+                            local jobOptions = {}
 
-                                            pr_lib.callback.trigger('forge-crafting:fetchJobs', function(jobs)
-                                                local jobTable = {}
-                                                for _, job in pairs(jobs) do
-                                                    jobTable[#jobTable + 1] = { label = job.label, value = job.value }
-                                                end
+                            jobOptions[#jobOptions + 1] = {
+                                title = isPublic and locales.enable_jobs or locales.add_jobs,
+                                icon = "unlock",
+                                description = locales.desc_enable_jobs,
+                                onSelect = function()
+                                    pr_lib.callback.trigger('forge-crafting:fetchJobs', function(jobs)
+                                        local jobTable = {}
+                                        for _, job in pairs(jobs or {}) do
+                                            jobTable[#jobTable + 1] = { label = job.label, value = job.value }
+                                        end
 
-                                                local jobsetlist = pr_lib.inputDialog(locales.select_job, {
-                                                    { type = 'multi-select', label = locales.choose, options = jobTable }
-                                                })
+                                        local jobsetlist = pr_lib.inputDialog(locales.select_job, {
+                                            { type = 'multi-select', label = locales.choose, options = jobTable, required = true }
+                                        })
 
-                                                if not jobsetlist then return pr_lib.showContext('jobs_editss') end
-                                                local jobsa = jobsetlist[1]
-                                                TriggerServerEvent("forge-crafting:ChangeJobs", args.craft_id, jobsa)
-                                                Wait(100)
-                                                TriggerEvent('forge-crafting:EditMenu')
-                                            end)
-                                        end,
-                                    },
-                                }
-                            else
-                                options = {
-                                    {
-                                        title = locales.disable_jobs,
-                                        icon = "lock",
-                                        description = locales.desc_disable_jobs,
-                                        onSelect = function()
-                                            TriggerServerEvent("forge-crafting:RemoveRequirement", args.craft_id)
-                                            Wait(100)
-                                            TriggerEvent('forge-crafting:EditMenu')
-                                        end,
-                                    }
+                                        if not jobsetlist then return pr_lib.showContext('jobs_editss') end
+                                        local jobsa = jobsetlist[1]
+                                        TriggerServerEvent("forge-crafting:ChangeJobs", args.craft_id, jobsa)
+                                        Wait(100)
+                                        TriggerEvent('forge-crafting:EditMenu')
+                                    end)
+                                end,
+                            }
+
+                            if not isPublic then
+                                jobOptions[#jobOptions + 1] = {
+                                    title = locales.disable_jobs,
+                                    icon = "lock-open",
+                                    description = locales.desc_disable_jobs,
+                                    onSelect = function()
+                                        TriggerServerEvent("forge-crafting:RemoveRequirement", args.craft_id)
+                                        Wait(100)
+                                        TriggerEvent('forge-crafting:EditMenu')
+                                    end,
                                 }
                             end
 
@@ -371,7 +376,7 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                                 id = 'jobs_editss',
                                 menu = 'edit_opcije',
                                 title = locales.job_options,
-                                options = options
+                                options = jobOptions
                             })
                             pr_lib.showContext('jobs_editss')
                         end, args.craft_id)
@@ -396,14 +401,37 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                             local blip = pr_lib.inputDialog(locales.blip_creation, {
                                 { type = 'number', label = locales.blip_sprite, required = true, max = 883, min = 0 },
                                 { type = 'number', label = locales.blip_colour, required = true, max = 85, min = 0 },
-                                { type = 'input', label = locales.blip_scale, required = true },
+                                { type = 'input', label = locales.blip_scale, required = true, default = "0.7" },
                                 { type = 'input', label = locales.blip_label, required = true, default = args.craft_name, icon = "signature" },
                             })
-                            if not blip then return TriggerEvent('forge-crafting:OpenEditFunctions', args) end
-                            local blip_data = { sprite = blip[1], colour = blip[2], scale = tonumber(blip[3]), blip_label = blip[4] }
+                            if not blip then return pr_lib.showContext('edit_opcije') end
+                            local blip_data = { sprite = blip[1], colour = blip[2], scale = tonumber(blip[3]) or 0.7, blip_label = blip[4] }
                             TriggerServerEvent("forge-crafting:UpdateBlip", blip_data, args.craft_id, args.craft_name)
                             Wait(100)
                             TriggerEvent('forge-crafting:EditMenu')
+                        end, args.craft_id)
+                    end,
+                },
+                {
+                    title = locales.teleport_to_coords,
+                    icon = "fa-solid fa-person-walking-dashed-line-arrow-right",
+                    description = locales.desc_teleport or "Teleporta até as coordenadas da bancada.",
+                    onSelect = function()
+                        pr_lib.callback.trigger("forge-crafting:GetEntityCoords", function(coords)
+                            if coords then
+                                local ped = PlayerPedId()
+                                DoScreenFadeOut(250)
+                                Wait(300)
+                                SetEntityCoords(ped, coords.x, coords.y, coords.z + 0.2, false, false, false, false)
+                                SetEntityHeading(ped, coords.w or 0.0)
+                                Wait(200)
+                                DoScreenFadeIn(250)
+                                PlaySoundFrontend(-1, "Zoom_In", "DLC_HEIST_PLANNING_BOARD_SOUNDS", 1)
+                                notify(locales.main_title, (locales.teleport_success or "Teleportado para: ") .. args.craft_name, "success")
+                            else
+                                notify(locales.main_title, "Coordenadas da bancada não encontradas.", "error")
+                            end
+                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
                         end, args.craft_id)
                     end,
                 },
@@ -425,7 +453,7 @@ AddEventHandler('forge-crafting:OpenEditFunctions', function(args)
                             TriggerServerEvent("forge-crafting:Update")
                             TriggerEvent('forge-crafting:EditMenu')
                         else
-                            TriggerEvent('forge-crafting:OpenEditFunctions', args)
+                            pr_lib.showContext('edit_opcije')
                             notify(locales.main_title, locales.deleting_cancelation, "inform")
                         end
                     end,
