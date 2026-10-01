@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forge Crafting</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="crafting-app" class="crafting-app" style="display: none;">
+        <div class="crafting-modal">
+            <!-- Header -->
+            <header class="modal-header">
+                <div class="header-left">
+                    <div class="header-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+                        </svg>
+                    </div>
+                    <div class="header-info">
+                        <h1 id="bench-title">Bancada de Trabalho</h1>
+                        <span class="header-subtitle">Oficina de Fabricação Forge-Core</span>
+                    </div>
+                </div>
+
+                <div class="header-center">
+                    <div class="player-level-badge" id="player-level-container">
+                        <span class="badge-label">Maestria:</span>
+                        <span class="badge-value" id="player-level-val">Nível 1</span>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <div class="search-box">
+                        <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="search-input" placeholder="Buscar receita..." autocomplete="off">
+                    </div>
+                    <button class="btn-close" id="btn-close" title="Fechar (ESC)">
+                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Main Content Area -->
+            <main class="modal-body">
+                <!-- Left Column: Recipe Catalog -->
+                <section class="catalog-section">
+                    <div class="section-title">
+                        <span>Receitas Disponíveis</span>
+                        <span class="recipe-count" id="recipes-count">0</span>
+                    </div>
+                    <div class="recipes-list" id="recipes-list">
+                        <!-- Recipe cards injected dynamically -->
+                    </div>
+                </section>
+
+                <!-- Right Column: Recipe Detail & Action -->
+                <section class="detail-section">
+                    <div id="recipe-detail-empty" class="detail-empty">
+                        <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" stroke-width="1.5" fill="none">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <p>Selecione uma receita ao lado para ver os requisitos</p>
+                    </div>
+
+                    <div id="recipe-detail-content" class="detail-content" style="display: none;">
+                        <!-- Product Preview Header -->
+                        <div class="product-card">
+                            <div class="product-image-container">
+                                <img id="detail-image" src="" alt="Produto" onerror="handleImageError(this)">
+                                <span class="product-amount-badge" id="detail-amount">x1</span>
+                            </div>
+                            <div class="product-info">
+                                <h2 id="detail-title">Nome do Item</h2>
+                                <div class="product-meta">
+                                    <div class="meta-item">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                        <span id="detail-time">5s</span>
+                                    </div>
+                                    <div class="meta-item" id="detail-level-meta">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                                        </svg>
+                                        <span id="detail-level-req">Nível 1</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Ingredients Section -->
+                        <div class="ingredients-section">
+                            <div class="section-title">
+                                <span>Materiais Requeridos</span>
+                                <span class="materials-status" id="materials-status">Pronto para forjar</span>
+                            </div>
+                            <div class="ingredients-grid" id="ingredients-grid">
+                                <!-- Ingredient cards injected dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Action Footer -->
+                        <div class="action-footer">
+                            <div class="status-warning" id="status-warning" style="display: none;">
+                                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                </svg>
+                                <span id="warning-message">Materiais insuficientes</span>
+                            </div>
+                            <button class="btn-craft" id="btn-craft">
+                                <span class="btn-craft-text">FABRICAR ITEM</span>
+                                <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+                                    <polyline points="9 18 15 12 9 6"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <!-- Script de Aplicação -->
+    <script src="js/app.js"></script>
+</body>
+</html>

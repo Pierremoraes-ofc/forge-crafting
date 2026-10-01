@@ -55,166 +55,87 @@ local function toggleCam(toggle, obj, offset)
     end
 end
 
-local function previewCraftable(data)
-    local modelHash = type(data.model) == "string" and joaat(data.model) or data.model
-    if modelHash and IsModelInCdimage(modelHash) then
-        RequestModel(modelHash)
-        while not HasModelLoaded(modelHash) do
-            Wait(10)
-        end
-
-        local offset = data.offset and data.offset or 1.1
-        toggleCam(true, data.entity or objects[data.objectid], offset)
-        if data.entity then
-            data.coords = GetOffsetFromEntityInWorldCoords(data.entity, 0, 0, 0)
-        end
-
-        CRAFTABLE_OBJ = CreateObject(modelHash, data.coords.x, data.coords.y, data.coords.z + offset, true, false, true)
-        SetEntityHeading(CRAFTABLE_OBJ, GetEntityHeading(PlayerPedId()) + 180)
-        SetEntityInvincible(CRAFTABLE_OBJ, true)
-        SetModelAsNoLongerNeeded(modelHash)
-
-        SetEntityDrawOutline(CRAFTABLE_OBJ, true)
-        SetEntityDrawOutlineColor(255, 255, 255, 30)
-        SetEntityDrawOutlineShader(1)
-
-        PlaySoundFrontend(-1, "Reset_Prop_Position", "DLC_Dmod_Prop_Editor_Sounds", 1)
-
-        CreateThread(function()
-            while DoesEntityExist(CRAFTABLE_OBJ) do
-                local heading = GetEntityHeading(CRAFTABLE_OBJ) + 0.5
-                SetEntityHeading(CRAFTABLE_OBJ, heading)
-                Wait(0)
-            end
-        end)
-    end
-
-    local secondaryOptions = {}
-    local craftable = true
-
-    for _, item in ipairs(data.recipe) do
-        local amount = item.amount
-        local label = item.label
-        local inventoryAmount = pr_lib.inventory and pr_lib.inventory.GetItemCount and pr_lib.inventory.GetItemCount(nil, item.item) or 0
-        local imageURL = "nui://" .. Config.ImagePath .. item.item .. ".png"
-        local levelNeeded = tonumber(data.level) or 0
-        local playerLevel = getCraftingLevel()
-
-        craftable = craftable and (inventoryAmount >= amount) and (levelNeeded <= playerLevel)
-
-        local description
-        if levelNeeded > 0 then
-            description = string.format('Possui: %s  \nExperiência Necessária: %s', inventoryAmount, levelNeeded)
-        else
-            description = string.format('Possui: %s', inventoryAmount)
-        end
-
-        secondaryOptions[#secondaryOptions + 1] = {
-            title = string.format('%sx %s', amount, label),
-            icon = imageURL,
-            description = description,
-            disabled = not craftable,
-        }
-    end
-
-    if craftable then
-        if DoesEntityExist(CRAFTABLE_OBJ) then SetEntityDrawOutlineColor(0, 255, 0, 100) end
-    else
-        if DoesEntityExist(CRAFTABLE_OBJ) then SetEntityDrawOutlineColor(255, 0, 0, 100) end
-    end
-
-    secondaryOptions[#secondaryOptions + 1] = {
-        title = 'Fabricar',
-        arrow = true,
-        event = "forge-crafting:CraftCertainItem",
-        args = {
-            craft_id = data.menu_id,
-            craft_item = data.craft_item,
-            item_label = data.item_label,
-            time = data.time,
-            amount = data.amount,
-            recipe = data.recipe,
-            coords = data.coords,
-            objectid = data.objectid,
-            anim = data.anim,
-            model = data.model,
-        },
-        disabled = not craftable
-    }
-
-    local contextFn = pr_lib.RegisterContext or (pr_lib.interface and pr_lib.interface.RegisterContext) or (pr_lib.ox and pr_lib.ox.registerContext)
-    local showContextFn = pr_lib.showContext or (pr_lib.interface and pr_lib.interface.showContext) or (pr_lib.ox and pr_lib.ox.showContext)
-
-    if contextFn and showContextFn then
-        contextFn({
-            id = 'forge-crafting:previewCraftable',
-            title = data.item_label,
-            menu = 'crafting' .. data.menu_id,
-            onBack = function()
-                toggleCam(false)
-                if DoesEntityExist(CRAFTABLE_OBJ) then DeleteObject(CRAFTABLE_OBJ) end
-            end,
-            canClose = false,
-            options = secondaryOptions
-        })
-        showContextFn('forge-crafting:previewCraftable')
-    end
-end
 
 function CraftMenu(id, name, coords, objectid, offset, entity)
     pr_lib.callback.trigger('forge-crafting:fetchItemsFromId', function(result)
         if not result then return end
 
-        local options = {}
+        local playerLevel = getCraftingLevel()
+        local formattedItems = {}
+
         for i = 1, #result do
             local someData = result[i]
-            local itemMetadata = {}
+            local recipeList = {}
 
             for _, item in ipairs(someData.recipe or {}) do
-                itemMetadata[#itemMetadata + 1] = { label = item.label, value = item.amount }
+                local ownedCount = 0
+                if pr_lib.inventory and pr_lib.inventory.GetItemCount then
+                    ownedCount = pr_lib.inventory.GetItemCount(nil, item.item) or 0
+                end
+
+                recipeList[#recipeList + 1] = {
+                    item = item.item,
+                    label = item.label or item.item,
+                    amount = tonumber(item.amount) or 1,
+                    owned = ownedCount,
+                    currentAmount = ownedCount
+                }
             end
 
-            options[#options + 1] = {
-                title = someData.item_label,
-                description = locales.items_recipe_desc .. (someData.time or 0) .. "s",
-                icon = "nui://" .. Config.ImagePath .. someData.item .. ".png",
-                onSelect = previewCraftable,
-                arrow = true,
-                metadata = itemMetadata,
-                args = {
-                    menu_id = id,
-                    anim = someData.anim,
-                    model = someData.model,
-                    craft_item = someData.item,
-                    item_label = someData.item_label,
-                    time = someData.time,
-                    amount = someData.amount,
-                    recipe = someData.recipe,
-                    coords = coords,
-                    objectid = objectid,
-                    offset = offset,
-                    level = someData.level,
-                    entity = entity
-                }
+            formattedItems[#formattedItems + 1] = {
+                item = someData.item,
+                item_label = someData.item_label or someData.item,
+                time = tonumber(someData.time) or 5,
+                amount = tonumber(someData.amount) or 1,
+                level = tonumber(someData.level) or 0,
+                recipe = recipeList,
+                anim = someData.anim,
+                model = someData.model
             }
         end
 
-        local contextFn = pr_lib.RegisterContext or (pr_lib.interface and pr_lib.interface.RegisterContext) or (pr_lib.ox and pr_lib.ox.registerContext)
-        local showContextFn = pr_lib.showContext or (pr_lib.interface and pr_lib.interface.showContext) or (pr_lib.ox and pr_lib.ox.showContext)
+        local benchPayload = {
+            id = id,
+            name = name,
+            coords = coords,
+            objectid = objectid,
+            offset = offset,
+        }
 
-        if contextFn and showContextFn then
-            contextFn({
-                id = 'crafting' .. id,
-                title = name,
-                options = options,
-                onExit = function()
-                    toggleCam(false)
-                end
-            })
-            showContextFn('crafting' .. id)
-        end
+        SendNUIMessage({
+            action = 'open',
+            bench = benchPayload,
+            items = formattedItems,
+            playerLevel = playerLevel,
+            imagePath = Config.ImagePath
+        })
+
+        SetNuiFocus(true, true)
     end, id)
 end
+
+RegisterNUICallback('close', function(data, cb)
+    SetNuiFocus(false, false)
+    toggleCam(false)
+    if DoesEntityExist(CRAFTABLE_OBJ) then
+        DeleteObject(CRAFTABLE_OBJ)
+    end
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('craft', function(data, cb)
+    SetNuiFocus(false, false)
+    toggleCam(false)
+    if DoesEntityExist(CRAFTABLE_OBJ) then
+        DeleteObject(CRAFTABLE_OBJ)
+    end
+
+    if data and data.craft_item then
+        TriggerEvent("forge-crafting:CraftCertainItem", data)
+    end
+
+    cb({ ok = true })
+end)
 
 local cachedWorkshops = {}
 
@@ -373,6 +294,8 @@ end)
 
 AddEventHandler("onResourceStop", function(res)
     if GetCurrentResourceName() ~= res then return end
+    SetNuiFocus(false, false)
+    SendNUIMessage({ action = 'close' })
     CleanupWorldEntities()
 
     for i = 1, #Blips do

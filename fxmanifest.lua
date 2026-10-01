@@ -23,3 +23,11 @@ server_scripts {
     'sv_db.lua',
     'sv_utils.lua',
 }
+
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/css/**',
+    'html/js/**',
+}
